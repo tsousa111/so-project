@@ -51,6 +51,6 @@ int main(int argc, char const *argv[]) {
     }
 
     write(fd_cl_sv, request, strlen(request));
-
+    // read da info do sv fd_sv_cl
     return 0;
 }
