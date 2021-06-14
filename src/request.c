@@ -6,15 +6,16 @@ typedef struct request {
     char *input_filename;
     char *output_filename;
     char **args;
-    int *n_filters; // array com o numero de cada filtro [0]  alto [1] baixo [2] ...
+    int n_filters[5]; // array com o numero de cada filtro [0]  alto [1] baixo [2] ...
+    struct request *prox;
 } * REQUEST;
 
-REQUEST init_reques(int pid){
+REQUEST init_request(int pid) {
     REQUEST new = malloc(sizeof(struct request));
     new->pid = pid;
+    new->prox = NULL;
     return new;
 }
 
-void fill_request(REQUEST* req, char* args ){  // args talvez seja um array de strings 
-
+int fill_request(REQUEST *req, char **args) { // args talvez seja um array de strings
 }
