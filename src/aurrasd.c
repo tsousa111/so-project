@@ -12,6 +12,7 @@
 char *filter_names[5];
 char *filter_path;
 int max_filters[5];
+int signal_pid_pd[2];
 
 readln(int fd, char *line, size_t size) {
     ssize_t res = 0;
@@ -32,16 +33,16 @@ readln(int fd, char *line, size_t size) {
     return j;
 }
 
-int parse(char *request, char **parsed_request) { // poderia ter feito de forma generica;
+int parse(char *request, char **parsed_request, int *n_filters) { // poderia ter feito de forma generica;
     char *token;
     token = strtok(request, " ");
     int i = 0;
     while (token != NULL) {
         if (i > 2) {
             int j;
-            if (!strcmp(token, "alto"))
+            if (!strcmp(token, "alto")) {
                 j = 0;
-            else if (!strcmp(token, "baixo"))
+            } else if (!strcmp(token, "baixo"))
                 j = 1;
             else if (!strcmp(token, "eco"))
                 j = 2;
@@ -51,6 +52,7 @@ int parse(char *request, char **parsed_request) { // poderia ter feito de forma 
                 j = 4;
             else
                 return -1;
+            n_filters[j]++;
             parsed_request[i] = strdup(strcat(filter_path, filter_names[j]));
         } else {
             parsed_request[i] = strdup(token);
@@ -68,6 +70,7 @@ int main(int argc, char const *argv[]) {
     char cl_sv_pid[25] = "../tmp/cl_sv_";
     char sv_cl_pid[25] = "../tmp/sv_cl_";
     char cl_req_id[CLIENT_REQ_ID]; // request id dado pelo cliente
+    int n_filters[5] = {0};
 
     // falta o load da config
     if (argc != 2) {
@@ -139,9 +142,9 @@ int main(int argc, char const *argv[]) {
             read(fd_cl_sv, request, MAX_BUF);
             char *parsed_request[20];
             int n_args = parse(request, parsed_request);
-            if (strcmp(parsed_request[0], "transform")) {
+            if (!strcmp(parsed_request[0], "transform")) {
 
-            } else if (strcmp(parsed_request[0], "status")) {
+            } else if (!strcmp(parsed_request[0], "status")) {
                 if (n_args > 1) {
                     message = strdup("Too many arguments for status call!\n");
                     write(fd_sv_cl, message, strlen(message));
@@ -158,7 +161,10 @@ int main(int argc, char const *argv[]) {
             unlink(cl_sv_fifo);
             unlink(sv_cl_fifo);
         } else {
+            // new->pid = pid; request
+            // add to queue;
         }
+
         close(fd_cl_server);
     }
 
