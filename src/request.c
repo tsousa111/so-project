@@ -1,18 +1,20 @@
 #include "request.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-REQUEST create_new_request(char **args, int *n_filters) { // args talvez seja um array de strings
+REQUEST create_new_request(char **args, int *client_filters) { // args talvez seja um array de strings
     REQUEST new = malloc(sizeof(struct request));
     new->input_filename = strdup(args[0]);
     new->output_filename = strdup(args[1]);
-    new->args = args[2];
+    new->args = &(args[2]);
     int n_args = 0;
     for (int i = 0; i < 5; i++)
-        n_args += n_filters[i];
+        n_args += client_filters[i];
     new->n_args = n_args;
-    new->n_filters = n_filters;
+    new->client_filters = client_filters;
     new->prox = NULL;
+    return new;
 }
 
 void enqueue(REQUEST *q, REQUEST entry) {
@@ -31,7 +33,7 @@ REQUEST dequeue(REQUEST *q) {
     return res;
 }
 
-void remove(REQUEST *q, int pid) {
+void remove_request(REQUEST *q, int pid) {
     if (!(*q) && !((*q)->prox))
         free(*q);
     REQUEST aux;
