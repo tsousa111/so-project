@@ -25,7 +25,6 @@ int parse_str_to_str_array(char *string, char **str_array) {
     token = strtok(string, delimit);
     while (token != NULL) {
         str_array[n_words] = token;
-        printf("%s\n", str_array[n_words]);
         n_words++;
         token = strtok(NULL, delimit);
     }
@@ -50,7 +49,6 @@ int parse_request(char **parsed_request, int *client_filters, int n_args) {
 }
 
 int main(int argc, char const *argv[]) {
-    int fd_cl_server;
     int pid;
     char config_buffer[MAX_BUF];
     // request id dado pelo cliente
@@ -69,32 +67,39 @@ int main(int argc, char const *argv[]) {
             return 1;
         }
         read(fd_config, config_buffer, MAX_BUF);
+        close(fd_config);
         int n_words = parse_str_to_str_array(config_buffer, cfg_array);
         n_filters = n_words / 3;
-        close(fd_config);
     }
 
     mkfifo(main_fifo, 0666);
+    // mkfifo(Client_Server_Main, 0666);
+    printf("Server ON.\n");
 
-    if ((fd_cl_server = open(main_fifo, O_RDONLY)) == -1) {
-        printf("Could't open client_server_fifo\n");
-        return -1;
-    }
+    //Abrir o main pipe.
+    // int fd_client_server_main;
+    // fd_client_server_main = open(Client_Server_Main, O_RDONLY);
 
+    // printf("Sv On\n");
+
+    int fd_cl_server;
+    fd_cl_server = open(main_fifo, O_RDONLY);
+
+    printf("OHOH FOK YOU\n");
     while (1) {
         int client_filters[10] = {0}; // numero de filtros usados pelo cliente
-        char cl_sv_pid[] = "../tmp/cl_sv_";
-        char sv_cl_pid[] = "../tmp/sv_cl_";
+        char cl_sv_fifo[64] = "../tmp/cl_sv_";
+        char sv_cl_fifo[64] = "../tmp/sv_cl_";
         char request[MAX_BUF] = {0};
         int fd_cl_sv;
-        char cl_req_id[CLIENT_REQ_ID];
+        char cl_req_id[CLIENT_REQ_ID] = {0};
 
-        int bytes_read = read(fd_cl_server, cl_req_id, CLIENT_REQ_ID);
+        int bytes = read(fd_cl_server, cl_req_id, CLIENT_REQ_ID);
+        printf("%d\n", bytes);
 
-        printf("%s\n", cl_req_id);
-        char *cl_sv_fifo = strcat(cl_sv_pid, cl_req_id);
+        strcat(cl_sv_fifo, cl_req_id);
         if (mkfifo(cl_sv_fifo, 0666) == -1) { // fifo com o pid do cliente para enviar as infos
-            printf("Couldn't create client_req_id_fifo\n");
+            printf("Couldn't create cl_sv_fifo\n");
             _exit(-1);
         }
 
@@ -136,7 +141,7 @@ int main(int argc, char const *argv[]) {
 
         if ((pid = fork()) == 0) {
             int fd_sv_cl;
-            char *sv_cl_fifo = strcat(sv_cl_pid, cl_req_id);
+            strcat(sv_cl_fifo, cl_req_id);
             char *message;
 
             if (mkfifo(sv_cl_fifo, 0666) == -1) { // fifo para sv mandar ao cliente info

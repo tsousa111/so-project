@@ -32,9 +32,12 @@ int main(int argc, char const *argv[]) {
     // }
 
     // snprintf(req_id, sizeof(req_id), "%d", (int)getpid());
-    int pid = (int)getpid();
-    snprintf(req_id, sizeof(req_id), "%d\0", pid);
+    int pid = getpid();
+    sprintf(req_id, "%d", pid);
+    printf("%s\n", req_id);
+
     int dsa = write(fd_req_fifo, req_id, sizeof(req_id));
+
     printf("%d\n", dsa);
     close(fd_req_fifo);
 
