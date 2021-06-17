@@ -44,7 +44,7 @@ int main(int argc, char const *argv[]) {
     strcat(cl_sv_pid, req_id);
     strcat(sv_cl_pid, req_id);
 
-    sleep(1);
+    sleep(2);
     if ((fd_cl_sv = open(cl_sv_pid, O_WRONLY)) == -1) {
         printf("Erro a abrir a fifo fd_cl_sv\n");
         return -1;
@@ -56,13 +56,18 @@ int main(int argc, char const *argv[]) {
 
     sleep(1);
 
-    if ((fd_sv_cl = open(sv_cl_pid, O_RDONLY)) == -1) {
-        printf("Erro a abrir a fifo fd_sv_cl\n");
-        return -1;
-    }
-    char message[64];
+    // if ((fd_sv_cl = open(sv_cl_pid, O_RDONLY)) == -1) {
+    //     printf("Erro a abrir a fifo fd_sv_cl\n");
+    //     return -1;
+    // }
+    fd_sv_cl = open(sv_cl_pid, O_RDONLY);
+
+    char message[2048] = {0};
+    // while (strcmp(message, "Done!") != 0) {
     read(fd_sv_cl, message, sizeof(message));
     printf("%s\n", message);
+    // memset(message, 0, sizeof(message));
+    // }
 
     close(((fd_sv_cl)));
     return 0;

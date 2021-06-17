@@ -3,6 +3,7 @@
 
 typedef struct request {
     int pid;
+    char *original_request;
     char *input_filename;
     char *output_filename;
     char **args;
@@ -11,7 +12,7 @@ typedef struct request {
     struct request *prox;
 } * REQUEST;
 
-REQUEST create_new_request(char **args, int *client_filters, int n_filters);
+REQUEST create_new_request(char **args, int *client_filters, int n_filters, char *original_request);
 
 void enqueue(REQUEST *q, REQUEST entry);
 

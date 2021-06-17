@@ -3,8 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-REQUEST create_new_request(char **args, int *client_filters, int n_filters) { // args talvez seja um array de strings
+REQUEST create_new_request(char **args, int *client_filters, int n_filters, char *original_request) { // args talvez seja um array de strings
     REQUEST new = malloc(sizeof(struct request));
+    new->original_request = original_request;
     new->input_filename = strdup(args[0]);
     new->output_filename = strdup(args[1]);
     new->args = &(args[2]);
@@ -30,7 +31,7 @@ void enqueue(REQUEST *q, REQUEST entry) {
 
 REQUEST dequeue(REQUEST *q) {
     REQUEST res = *q;
-    q = &((*q)->prox);
+    *q = (*q)->prox;
     res->prox = NULL;
     return res;
 }

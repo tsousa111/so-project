@@ -11,6 +11,7 @@
 #define CLIENT_REQ_ID 64
 #define MAX_BUF 1024
 #define main_fifo "../tmp/main_req_fifo"
+#define finished_req_fifo "../tmp/finished_req_fifo"
 
 char *cfg_array[30] = {0};
 char filter_path[64];
@@ -20,7 +21,69 @@ int *filters_being_used;
 REQUEST request_queue = NULL;
 REQUEST request_executing = NULL;
 
+int closing_flag = 0;
+
 void sighandler_sigusr1(int signum) {
+    int pid;
+    int flag = 0;
+    int fd_finished_req = open(finished_req_fifo, O_RDONLY);
+    read(fd_finished_req, &pid, sizeof(int));
+    close(fd_finished_req);
+    printf("PID_FINISHED : %d\n", pid);
+    REQUEST removed = remove_request(&request_executing, pid);
+
+    for (int i = 0; i < n_filters; i++) {
+        filters_being_used[i] -= removed->client_filters[i];
+    }
+
+    while (request_queue != NULL && !flag) {
+        for (int i = 0; i < n_filters && !flag; i++) {
+            if ((request_queue->client_filters[i] + filters_being_used[i]) > max_filters[i])
+                flag = 1;
+        }
+        if (!flag) {
+            REQUEST aux = dequeue(&request_queue);
+            enqueue(&request_executing, aux);
+            for (int i = 0; i < n_filters; i++) // atualizar os filtros que estao a ser usados
+                filters_being_used[i] += aux->client_filters[i];
+            printf("Sent signal to %d\n", aux->pid);
+            kill(aux->pid, SIGUSR2);
+        }
+    }
+}
+
+void sighandler_sigusr2(int signum) {}
+
+void sighandler_sigint(int signum) {
+    int fd = open(main_fifo, O_WRONLY);
+    write(fd, "close", strlen("close"));
+    close(fd);
+}
+
+void status_message(char *res) {
+    char aux[128];
+    REQUEST aux_req = request_executing;
+    strcat(res, "Executing :\n");
+    while (aux_req != NULL) {
+        sprintf(aux, "\t%s\n", aux_req->original_request);
+        strcat(res, aux);
+
+        aux_req = aux_req->prox;
+    }
+    strcat(res, "\n");
+    aux_req = request_queue;
+    strcat(res, "In queue :\n");
+    while (aux_req != NULL) {
+        sprintf(aux, "\t%s\n", aux_req->original_request);
+        strcat(res, aux);
+        aux_req = aux_req->prox;
+    }
+    strcat(res, "\n");
+
+    for (int i = 0; i < n_filters; i++) {
+        sprintf(aux, "filter %s: %d/%d (running/max)\n", cfg_array[i * 3], filters_being_used[i], max_filters[i]);
+        strcat(res, aux);
+    }
 }
 
 int parse_str_to_str_array(char *string, char **str_array) {
@@ -84,7 +147,13 @@ int main(int argc, char const *argv[]) {
         }
     }
 
+    signal(SIGUSR1, sighandler_sigusr1);
+    signal(SIGUSR2, sighandler_sigusr2);
+    signal(SIGINT, sighandler_sigint);
+
     mkfifo(main_fifo, 0666);
+
+    mkfifo(finished_req_fifo, 0666);
 
     printf("Server ON.\n");
 
@@ -101,6 +170,10 @@ int main(int argc, char const *argv[]) {
         main_req_fifo = open(main_fifo, O_RDONLY);
 
         read(main_req_fifo, cl_req_id, sizeof(cl_req_id));
+        close(main_req_fifo);
+
+        if (!strcmp(cl_req_id, "close"))
+            break;
 
         strcat(cl_sv_fifo, cl_req_id);
 
@@ -122,15 +195,15 @@ int main(int argc, char const *argv[]) {
         int n_args;
         REQUEST req = NULL;
         int filter_flag = 0;
-
+        char *request_copy = strdup(request);
         n_args = parse_str_to_str_array(request, parsed_request);
-
+        int invalid_filter = 0;
         // se o nome de um filter nao for valido devolve -1
-        if (parse_request(parsed_request, client_filters, n_args) != -1) {
+        if ((invalid_filter = parse_request(parsed_request, client_filters, n_args)) != -1) {
             if (!strcmp(parsed_request[0], "transform")) { // se for transform cria um request
 
                 if (n_args > 3) {
-                    req = create_new_request(&(parsed_request[1]), client_filters, n_filters);
+                    req = create_new_request(&(parsed_request[1]), client_filters, n_filters, request_copy);
 
                     for (int i = 0; i < n_filters && !filter_flag; i++) {
                         if (req->client_filters[i] > max_filters[i]) // se a quantidade de um filtro exceder o seu maximo
@@ -158,28 +231,30 @@ int main(int argc, char const *argv[]) {
                 printf("Couldn't create client_req_id_fifo\n");
                 _exit(-1);
             }
-            if ((fd_sv_cl = open(sv_cl_fifo, O_WRONLY, 0666)) == -1) {
+            if ((fd_sv_cl = open(sv_cl_fifo, O_WRONLY)) == -1) {
                 printf("Couldn't open fd_cl_sv");
                 _exit(-1);
             }
 
-            if (n_args == -1) {
+            if (invalid_filter == -1 || n_args == -1) {
                 message = strdup("Invalid filter name!\n");
+                write(fd_sv_cl, message, strlen(message));
             } else if (filter_flag == -1) {
                 message = strdup("Filter limit reached!\n");
+                write(fd_sv_cl, message, strlen(message));
             } else if (req != NULL) { // comando transform
-                // write pending to fifo
-
+                // message = strdup("Pending...");
+                // write(fd_sv_cl, message, strlen(message));
                 if (filter_flag) // fica a espera quando nao tem filtros disponiveis
                     pause();
-                // write processing to fifo
+
+                // message = strdup("Processing...");
+                // write(fd_sv_cl, message, strlen(message));
 
                 if (req->n_args == 1) {
                     if (fork() == 0) {
                         strcat(filter_path, req->args[0]);
 
-                        printf("%s\n", filter_path);
-                        // printf("%s\n", req->input_filename);
                         int input_fd = open(req->input_filename, O_RDONLY);
                         int output_fd = open(req->output_filename, O_CREAT | O_WRONLY, 0666);
 
@@ -235,7 +310,9 @@ int main(int argc, char const *argv[]) {
                             }
                         } else {
                             pipe(pd[i]);
-
+                            while (request_executing != NULL || request_queue != NULL) {
+                                pause();
+                            }
                             if (fork() == 0) {
                                 strcat(filter_path, req->args[i]);
                                 close(pd[i][0]);
@@ -257,16 +334,25 @@ int main(int argc, char const *argv[]) {
                     for (int i = 0; i < req->n_args; i++) {
                         wait(&status);
                     }
-                    // kill(getppid(),sigusr2);
+
+                    kill(getppid(), SIGUSR1);
+
+                    int fd_finished_req = open(finished_req_fifo, O_WRONLY);
+                    int pid_finished = getpid();
+
+                    write(fd_finished_req, &pid_finished, sizeof(int));
+                    close(fd_finished_req);
                 }
-                message = strdup("Done!");
             } else if (!strcmp(parsed_request[0], "status")) {
-                // send to client the current status
-                message = strdup("status call!\n");
+                char status_write[2048] = {0};
+                status_message(status_write);
+                printf("%s\n", status_write);
+                write(fd_sv_cl, status_write, strlen(status_write));
             } else {
                 message = strdup("Invalid arguments!\n");
+                write(fd_sv_cl, message, strlen(message));
             }
-            write(fd_sv_cl, message, strlen(message));
+            write(fd_sv_cl, "Done!", 5);
 
             close(fd_sv_cl);
             unlink(sv_cl_fifo);
@@ -274,29 +360,20 @@ int main(int argc, char const *argv[]) {
         } else {
             if (req != NULL) {
                 req->pid = pid;
-                printf("pid do request : %d\n", req->pid);
                 if (filter_flag) {
                     enqueue(&request_queue, req);
-                } else {
-                    enqueue(&request_executing, req);
-                }
-
-                if (request_queue != NULL) {
                     printf("Added %d to the queue\n", request_queue->pid);
-                }
-                if (request_executing != NULL) {
+                } else if (filter_flag == 0) {
+                    enqueue(&request_executing, req);
                     printf("%d executing\n", request_executing->pid);
-                    dequeue(&request_executing);
-                    if (!(req->prox)) {
-                        printf("yeye");
-                    }
                 }
             }
         }
         close(fd_cl_sv);
         unlink(cl_sv_fifo);
-        close(main_req_fifo);
     }
+
     unlink(main_fifo);
+    unlink(finished_req_fifo);
     return 0;
 }
