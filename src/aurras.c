@@ -16,7 +16,6 @@ int main(int argc, char const *argv[]) {
         printf("Server closed... Try again later!\n");
         return -1;
     }
-
     if (argc == 2 && !strcmp(argv[1], "status")) {
         strcpy(request, argv[1]);
     } else if (argc > 2 && !strcmp(argv[1], "transform")) { // TALVEZ MELHORAR
@@ -30,7 +29,6 @@ int main(int argc, char const *argv[]) {
         printf("Bad input...\n");
         return -1;
     }
-
     sprintf(req_id, "%d", (int)getpid());
 
     write(fd_req_fifo, req_id, sizeof(req_id));
