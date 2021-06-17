@@ -11,11 +11,14 @@ typedef struct request {
     struct request *prox;
 } * REQUEST;
 
-REQUEST create_new_request(char **args, int *client_filters);
+REQUEST create_new_request(char **args, int *client_filters, int n_filters);
 
 void enqueue(REQUEST *q, REQUEST entry);
 
 REQUEST dequeue(REQUEST *q);
 
-void remove_request(REQUEST *q, int pid);
+REQUEST remove_request(REQUEST *q, int pid);
+
+void destroy_request(REQUEST r);
+
 #endif

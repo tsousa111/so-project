@@ -3,13 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-REQUEST create_new_request(char **args, int *client_filters) { // args talvez seja um array de strings
+REQUEST create_new_request(char **args, int *client_filters, int n_filters) { // args talvez seja um array de strings
     REQUEST new = malloc(sizeof(struct request));
     new->input_filename = strdup(args[0]);
     new->output_filename = strdup(args[1]);
     new->args = &(args[2]);
     int n_args = 0;
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < n_filters; i++)
         n_args += client_filters[i];
     new->n_args = n_args;
     new->client_filters = client_filters;
@@ -20,10 +20,12 @@ REQUEST create_new_request(char **args, int *client_filters) { // args talvez se
 void enqueue(REQUEST *q, REQUEST entry) {
     if (!(*q))
         *q = entry;
-    REQUEST aux;
-    for (aux = *q; aux && aux->prox; aux = aux->prox)
-        ;
-    aux->prox = entry;
+    else {
+        REQUEST aux;
+        for (aux = *q; aux && aux->prox; aux = aux->prox)
+            ;
+        aux->prox = entry;
+    }
 }
 
 REQUEST dequeue(REQUEST *q) {
@@ -33,17 +35,22 @@ REQUEST dequeue(REQUEST *q) {
     return res;
 }
 
-void remove_request(REQUEST *q, int pid) {
-    if (!(*q) && !((*q)->prox))
-        free(*q);
+REQUEST remove_request(REQUEST *q, int pid) {
+    REQUEST removed = NULL;
+    if ((*q)->prox == NULL) {
+        removed = *q;
+        *q = NULL;
+        return removed;
+    }
+
     REQUEST aux;
-    REQUEST removed;
+
     for (aux = *q; aux && aux->prox; aux = aux->prox) {
         if (aux->prox->pid == pid) {
             removed = aux->prox;
             aux->prox = removed->prox;
-            free(removed);
-            break;
+            removed->prox = NULL;
         }
     }
+    return removed;
 }

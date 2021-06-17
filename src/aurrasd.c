@@ -14,10 +14,14 @@
 
 char *cfg_array[30] = {0};
 char filter_path[64];
-int n_filters;
-int max_filters[5] = {0};
-int filters_being_used[5] = {0};
-int signal_pid_pd[2];
+int n_filters = 0;
+int *max_filters;
+int *filters_being_used;
+REQUEST request_queue = NULL;
+REQUEST request_executing = NULL;
+
+void sighandler_sigusr1(int signum) {
+}
 
 int parse_str_to_str_array(char *string, char **str_array) {
     int n_words = 0;
@@ -67,19 +71,18 @@ int main(int argc, char const *argv[]) {
             printf("Error opening config file...\n");
             return 1;
         }
-        read(fd_config, config_buffer, MAX_BUF);
+        read(fd_config, config_buffer, sizeof(config_buffer));
         close(fd_config);
         int n_words = parse_str_to_str_array(config_buffer, cfg_array);
 
+        n_filters = n_words / 3;
+
+        max_filters = calloc(n_filters, sizeof(int));
+        filters_being_used = calloc(n_filters, sizeof(int));
         for (int i = 2; i < n_words; i += 3) {
             max_filters[(i - 2) / 3] = atoi(cfg_array[i]);
         }
-
-        printf("yes\n");
-        n_filters = n_words / 3;
     }
-
-    printf("max alto : %d\n", max_filters[0]);
 
     mkfifo(main_fifo, 0666);
 
@@ -88,7 +91,7 @@ int main(int argc, char const *argv[]) {
     int main_req_fifo;
 
     while (1) {
-        int client_filters[10] = {0}; // numero de filtros usados pelo cliente
+        int *client_filters = calloc(n_filters, sizeof(int)); // numero de filtros usados pelo cliente
         char cl_sv_fifo[64] = "../tmp/cl_sv_";
         char sv_cl_fifo[64] = "../tmp/sv_cl_";
         char request[MAX_BUF] = {0};
@@ -98,10 +101,8 @@ int main(int argc, char const *argv[]) {
         main_req_fifo = open(main_fifo, O_RDONLY);
 
         read(main_req_fifo, cl_req_id, sizeof(cl_req_id));
-        printf("%s\n", cl_req_id);
 
         strcat(cl_sv_fifo, cl_req_id);
-        printf("%s\n", cl_sv_fifo);
 
         if (mkfifo(cl_sv_fifo, 0666) == -1) { // fifo com o pid do cliente para enviar as infos
             printf("Couldn't create cl_sv_fifo\n");
@@ -113,9 +114,9 @@ int main(int argc, char const *argv[]) {
             return 1;
         }
 
-        read(fd_cl_sv, request, MAX_BUF); // read request dado pelo cliente
+        read(fd_cl_sv, request, sizeof(request)); // read request dado pelo cliente
 
-        printf("%s\n", request);
+        printf("%s : %s\n", cl_req_id, request);
 
         char *parsed_request[20];
         int n_args;
@@ -127,8 +128,9 @@ int main(int argc, char const *argv[]) {
         // se o nome de um filter nao for valido devolve -1
         if (parse_request(parsed_request, client_filters, n_args) != -1) {
             if (!strcmp(parsed_request[0], "transform")) { // se for transform cria um request
+
                 if (n_args > 3) {
-                    req = create_new_request(&(parsed_request[1]), client_filters);
+                    req = create_new_request(&(parsed_request[1]), client_filters, n_filters);
 
                     for (int i = 0; i < n_filters && !filter_flag; i++) {
                         if (req->client_filters[i] > max_filters[i]) // se a quantidade de um filtro exceder o seu maximo
@@ -137,6 +139,9 @@ int main(int argc, char const *argv[]) {
                         else if ((req->client_filters[i] + filters_being_used[i]) > max_filters[i]) // se nao houver filtros suficientes
                             filter_flag = 1;                                                        // para satisfazer o pedido do cliente
                     }
+                    if (request_queue != NULL) {
+                        filter_flag = 1;
+                    }
                     for (int i = 0; i < n_filters && !filter_flag; i++) { // atualizar os filtros que estao a ser usados
                         filters_being_used[i] += req->client_filters[i];
                     }
@@ -144,7 +149,6 @@ int main(int argc, char const *argv[]) {
                     n_args = -1;
             }
         }
-
         if ((pid = fork()) == 0) {
             int fd_sv_cl;
             strcat(sv_cl_fifo, cl_req_id);
@@ -253,6 +257,7 @@ int main(int argc, char const *argv[]) {
                     for (int i = 0; i < req->n_args; i++) {
                         wait(&status);
                     }
+                    // kill(getppid(),sigusr2);
                 }
                 message = strdup("Done!");
             } else if (!strcmp(parsed_request[0], "status")) {
@@ -269,8 +274,24 @@ int main(int argc, char const *argv[]) {
         } else {
             if (req != NULL) {
                 req->pid = pid;
+                printf("pid do request : %d\n", req->pid);
+                if (filter_flag) {
+                    enqueue(&request_queue, req);
+                } else {
+                    enqueue(&request_executing, req);
+                }
+
+                if (request_queue != NULL) {
+                    printf("Added %d to the queue\n", request_queue->pid);
+                }
+                if (request_executing != NULL) {
+                    printf("%d executing\n", request_executing->pid);
+                    dequeue(&request_executing);
+                    if (!(req->prox)) {
+                        printf("yeye");
+                    }
+                }
             }
-            // add to queue;
         }
         close(fd_cl_sv);
         unlink(cl_sv_fifo);
