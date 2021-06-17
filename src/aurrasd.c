@@ -5,11 +5,12 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #define CLIENT_REQ_ID 64
 #define MAX_BUF 1024
-#define main_fifo "../tmp/cl_sv_fifo"
+#define main_fifo "../tmp/main_req_fifo"
 
 char *cfg_array[30] = {0};
 char filter_path[64];
@@ -34,7 +35,7 @@ int parse_str_to_str_array(char *string, char **str_array) {
 int parse_request(char **parsed_request, int *client_filters, int n_args) {
     int flag = 0;
     for (int i = 3; i < n_args && flag != -1; i++) {
-        for (int j = 0, k = 0; cfg_array[j]; j = j + 3, k++) {
+        for (int j = 0; cfg_array[j]; j = j + 3) {
             if (strcmp(parsed_request[i], cfg_array[j]) == 0) {
                 parsed_request[i] = cfg_array[j + 1];
                 client_filters[j / 3]++;
@@ -58,7 +59,7 @@ int main(int argc, char const *argv[]) {
         return 1;
     } else {
         // leitura e parsing da config
-        strcpy(filter_path, argv[2]);
+        strcat(filter_path, argv[2]);
         strcat(filter_path, "/");
 
         int fd_config;
@@ -69,46 +70,52 @@ int main(int argc, char const *argv[]) {
         read(fd_config, config_buffer, MAX_BUF);
         close(fd_config);
         int n_words = parse_str_to_str_array(config_buffer, cfg_array);
+
+        for (int i = 2; i < n_words; i += 3) {
+            max_filters[(i - 2) / 3] = atoi(cfg_array[i]);
+        }
+
+        printf("yes\n");
         n_filters = n_words / 3;
     }
 
+    printf("max alto : %d\n", max_filters[0]);
+
     mkfifo(main_fifo, 0666);
-    // mkfifo(Client_Server_Main, 0666);
+
     printf("Server ON.\n");
 
-    //Abrir o main pipe.
-    // int fd_client_server_main;
-    // fd_client_server_main = open(Client_Server_Main, O_RDONLY);
+    int main_req_fifo;
 
-    // printf("Sv On\n");
-
-    int fd_cl_server;
-    fd_cl_server = open(main_fifo, O_RDONLY);
-
-    printf("OHOH FOK YOU\n");
     while (1) {
         int client_filters[10] = {0}; // numero de filtros usados pelo cliente
         char cl_sv_fifo[64] = "../tmp/cl_sv_";
         char sv_cl_fifo[64] = "../tmp/sv_cl_";
         char request[MAX_BUF] = {0};
-        int fd_cl_sv;
         char cl_req_id[CLIENT_REQ_ID] = {0};
+        int fd_cl_sv;
 
-        int bytes = read(fd_cl_server, cl_req_id, CLIENT_REQ_ID);
-        printf("%d\n", bytes);
+        main_req_fifo = open(main_fifo, O_RDONLY);
+
+        read(main_req_fifo, cl_req_id, sizeof(cl_req_id));
+        printf("%s\n", cl_req_id);
 
         strcat(cl_sv_fifo, cl_req_id);
+        printf("%s\n", cl_sv_fifo);
+
         if (mkfifo(cl_sv_fifo, 0666) == -1) { // fifo com o pid do cliente para enviar as infos
             printf("Couldn't create cl_sv_fifo\n");
-            _exit(-1);
+            return 1;
         }
 
         if ((fd_cl_sv = open(cl_sv_fifo, O_RDONLY)) == -1) {
             printf("Couldn't open fd_cl_sv\n");
-            _exit(-1);
+            return 1;
         }
 
         read(fd_cl_sv, request, MAX_BUF); // read request dado pelo cliente
+
+        printf("%s\n", request);
 
         char *parsed_request[20];
         int n_args;
@@ -127,9 +134,8 @@ int main(int argc, char const *argv[]) {
                         if (req->client_filters[i] > max_filters[i]) // se a quantidade de um filtro exceder o seu maximo
                             filter_flag = -1;
 
-                        else if ((req->client_filters[i] + filters_being_used[i]) > max_filters[i]) { // se nao houver filtros suficientes
-                            filter_flag = 1;                                                          // para satisfazer o pedido do cliente
-                        }
+                        else if ((req->client_filters[i] + filters_being_used[i]) > max_filters[i]) // se nao houver filtros suficientes
+                            filter_flag = 1;                                                        // para satisfazer o pedido do cliente
                     }
                     for (int i = 0; i < n_filters && !filter_flag; i++) { // atualizar os filtros que estao a ser usados
                         filters_being_used[i] += req->client_filters[i];
@@ -152,45 +158,114 @@ int main(int argc, char const *argv[]) {
                 printf("Couldn't open fd_cl_sv");
                 _exit(-1);
             }
+
             if (n_args == -1) {
                 message = strdup("Invalid filter name!\n");
-                write(fd_sv_cl, message, strlen(message));
             } else if (filter_flag == -1) {
                 message = strdup("Filter limit reached!\n");
-                write(fd_sv_cl, message, strlen(message));
             } else if (req != NULL) { // comando transform
                 // write pending to fifo
-                // if (filter_flag) // fica a espera quando nao tem filtros disponiveis
-                //     pause();
+
+                if (filter_flag) // fica a espera quando nao tem filtros disponiveis
+                    pause();
                 // write processing to fifo
 
-                // if (req->n_args == 1) {
-                // int input_fd = open(req->input_filename, O_RDONLY);
-                // int output_fd = open(req->output_filename, O_CREAT | O_RDONLY, 0666);
-                //
-                // dup2(input_fd, 0);
-                // dup2(output_fd, 1);
-                // close(input_fd);
-                // close(output_fd);
-                // execl(req->args[0], req->args[0], NULL);
-                // } else {
-                // int pd[n_args - 1][2];
-                // }
-                printf("Received %s \n", req->args[0]);
-            } else if (!strcmp(parsed_request[0], "status")) {
-                if (n_args > 1) {
-                    message = strdup("Too many arguments for status call!\n");
-                    write(fd_sv_cl, message, strlen(message));
+                if (req->n_args == 1) {
+                    if (fork() == 0) {
+                        strcat(filter_path, req->args[0]);
+
+                        printf("%s\n", filter_path);
+                        // printf("%s\n", req->input_filename);
+                        int input_fd = open(req->input_filename, O_RDONLY);
+                        int output_fd = open(req->output_filename, O_CREAT | O_WRONLY, 0666);
+
+                        dup2(input_fd, 0);
+                        close(input_fd);
+
+                        dup2(output_fd, 1);
+                        close(output_fd);
+
+                        execl(filter_path, filter_path, NULL);
+                        _exit(-1);
+                    } else {
+                        int status;
+                        wait(&status);
+                    }
                 } else {
-                    // send to client the current status
+                    int status;
+                    int pd[req->n_args - 1][2];
+                    pipe(pd[0]);
+                    for (int i = 0; i < req->n_args; i++) {
+                        if (i == 0) {
+                            if (fork() == 0) {
+                                strcat(filter_path, req->args[i]);
+                                close(pd[0][0]);
+
+                                int input_fd = open(req->input_filename, O_RDONLY);
+
+                                dup2(input_fd, 0);
+                                close(input_fd);
+
+                                dup2(pd[0][1], 1);
+                                close(pd[0][1]);
+
+                                execl(filter_path, filter_path, NULL);
+                            } else {
+                                close(pd[0][1]);
+                            }
+
+                        } else if (i == req->n_args - 1) {
+                            if (fork() == 0) {
+                                strcat(filter_path, req->args[i]);
+
+                                int output_fd = open(req->output_filename, O_CREAT | O_WRONLY, 0666);
+                                dup2(output_fd, 1);
+
+                                dup2(pd[i - 1][0], 0);
+                                close(pd[i - 1][0]);
+
+                                execl(filter_path, filter_path, NULL);
+                                _exit(-1);
+                            } else {
+                                close(pd[i - 1][0]);
+                            }
+                        } else {
+                            pipe(pd[i]);
+
+                            if (fork() == 0) {
+                                strcat(filter_path, req->args[i]);
+                                close(pd[i][0]);
+
+                                dup2(pd[i - 1][0], 0);
+                                close(pd[i - 1][0]);
+
+                                dup2(pd[i][1], 1);
+                                close(pd[i][1]);
+
+                                execl(filter_path, filter_path, NULL);
+                                _exit(-1);
+                            } else {
+                                close(pd[i][1]);
+                                close(pd[i - 1][0]);
+                            }
+                        }
+                    }
+                    for (int i = 0; i < req->n_args; i++) {
+                        wait(&status);
+                    }
                 }
+                message = strdup("Done!");
+            } else if (!strcmp(parsed_request[0], "status")) {
+                // send to client the current status
+                message = strdup("status call!\n");
             } else {
                 message = strdup("Invalid arguments!\n");
-                write(fd_sv_cl, message, strlen(message));
             }
+            write(fd_sv_cl, message, strlen(message));
+
             close(fd_sv_cl);
             unlink(sv_cl_fifo);
-
+            _exit(0);
         } else {
             if (req != NULL) {
                 req->pid = pid;
@@ -199,7 +274,8 @@ int main(int argc, char const *argv[]) {
         }
         close(fd_cl_sv);
         unlink(cl_sv_fifo);
+        close(main_req_fifo);
     }
-    close(fd_cl_server);
+    unlink(main_fifo);
     return 0;
 }
