@@ -29,6 +29,7 @@ int main(int argc, char const *argv[]) {
         printf("Bad input...\n");
         return -1;
     }
+
     sprintf(req_id, "%d", (int)getpid());
 
     write(fd_req_fifo, req_id, sizeof(req_id));
