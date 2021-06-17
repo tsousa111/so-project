@@ -55,10 +55,6 @@ int main(int argc, char const *argv[]) {
 
     sleep(1);
 
-    // if ((fd_sv_cl = open(sv_cl_pid, O_RDONLY)) == -1) {
-    //     printf("Erro a abrir a fifo fd_sv_cl\n");
-    //     return -1;
-    // }
     fd_sv_cl = open(sv_cl_pid, O_RDONLY);
 
     char message[2048] = {0};

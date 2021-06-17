@@ -54,11 +54,11 @@ void sighandler_sigusr1(int signum) {
 
 void sighandler_sigusr2(int signum) {}
 
-void sighandler_sigint(int signum) {
-    int fd = open(main_fifo, O_WRONLY);
-    write(fd, "close", strlen("close"));
-    close(fd);
-}
+// void sighandler_sigint(int signum) {
+//     int fd = open(main_fifo, O_WRONLY);
+//     write(fd, "close", strlen("close"));
+//     close(fd);
+// }
 
 void status_message(char *res) {
     char aux[128];
@@ -149,7 +149,7 @@ int main(int argc, char const *argv[]) {
 
     signal(SIGUSR1, sighandler_sigusr1);
     signal(SIGUSR2, sighandler_sigusr2);
-    signal(SIGINT, sighandler_sigint);
+    // signal(SIGINT, sighandler_sigint);
 
     mkfifo(main_fifo, 0666);
 
